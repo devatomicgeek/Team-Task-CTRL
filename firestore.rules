@@ -170,5 +170,60 @@ service cloud.firestore {
     allow delete: if false;
   }
 
+  // v1.6: WebRTC Pong signaling. Firestore never stores per-frame gameplay.
+  function pongPlayer(m) { return logged() && request.auth.uid in m.players; }
+  match /pongMatches/{mid} {
+    allow get, list: if pongPlayer(resource.data);
+    allow create: if logged()
+      && request.resource.data.keys().hasOnly(['hostId','guestId','players','status','createdAt','updatedAt','scoreA','scoreB'])
+      && request.resource.data.hostId == request.auth.uid
+      && request.resource.data.guestId is string
+      && request.resource.data.guestId != request.auth.uid
+      && exists(/databases/$(database)/documents/users/$(request.resource.data.guestId))
+      && request.resource.data.players == [request.auth.uid,request.resource.data.guestId]
+      && request.resource.data.status == 'pending'
+      && request.resource.data.scoreA == 0 && request.resource.data.scoreB == 0;
+    allow update: if pongPlayer(resource.data)
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt','offer','answer','scoreA','scoreB'])
+      && request.resource.data.players == resource.data.players
+      && request.resource.data.hostId == resource.data.hostId
+      && request.resource.data.guestId == resource.data.guestId
+      && (
+        (resource.data.status == 'pending' && request.auth.uid == resource.data.guestId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
+          && request.resource.data.status in ['accepted','declined'])
+        || (resource.data.status == 'accepted' && request.auth.uid == resource.data.hostId
+          && request.resource.data.status == 'playing'
+          && request.resource.data.offer.type == 'offer'
+          && request.resource.data.offer.sdp is string
+          && request.resource.data.offer.sdp.size() < 16000)
+        || (resource.data.status == 'playing' && request.auth.uid == resource.data.guestId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer','updatedAt'])
+          && request.resource.data.answer.type == 'answer'
+          && request.resource.data.answer.sdp is string
+          && request.resource.data.answer.sdp.size() < 16000)
+        || (resource.data.status in ['accepted','playing'] && request.resource.data.status == 'ended'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt','scoreA','scoreB'])
+          && request.resource.data.scoreA is int && request.resource.data.scoreB is int
+          && request.resource.data.scoreA >= 0 && request.resource.data.scoreA <= 7
+          && request.resource.data.scoreB >= 0 && request.resource.data.scoreB <= 7)
+      );
+    allow delete: if false;
+    match /candidates/{candidateId} {
+      allow get, list: if logged()
+        && exists(/databases/$(database)/documents/pongMatches/$(mid))
+        && request.auth.uid in get(/databases/$(database)/documents/pongMatches/$(mid)).data.players;
+      allow create: if logged()
+        && exists(/databases/$(database)/documents/pongMatches/$(mid))
+        && request.auth.uid in get(/databases/$(database)/documents/pongMatches/$(mid)).data.players
+        && get(/databases/$(database)/documents/pongMatches/$(mid)).data.status in ['accepted','playing']
+        && request.resource.data.keys().hasOnly(['senderId','candidate','createdAt'])
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.candidate.candidate is string
+        && request.resource.data.candidate.candidate.size() <= 3000;
+      allow update, delete: if false;
+    }
+  }
+
  }
 }

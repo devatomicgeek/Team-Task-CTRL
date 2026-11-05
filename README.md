@@ -1,21 +1,21 @@
-# Team Task Tracker v1.5 Spark Edition
+# Team Task Tracker v1.6 Spark Edition
 
-## Changes from v1.4
-- Edge-to-edge full-browser layout: removes fake window border, rounded outer shell, outer margins and width cap. Responsive mobile layout retained.
-- Chat list permission fix: participant-scoped queries match participant-based Firestore rules. Task authorization is checked when task chats are created and when sending messages, rather than as an extra condition on chat collection queries.
-- Chat send uses a Firestore transaction to update message count and the sender read counter together. Solo-owner task chat creation now supported.
-- Chat entries for known soft-deleted tasks are hidden from active conversation list.
+## Changes
+- Sidebar: removed top logo, brand name, and version badge; profile now starts the sidebar. Brand and version moved to the sidebar footer.
+- New Arcade navigation: retro Pong practice vs computer, plus 1v1 teammate challenges, accept/decline, and WebRTC DataChannel gameplay.
+- Existing v1.5 calendar, chat, leave planner, and task workflows retained.
 
-## Deployment (IMPORTANT)
-1. Back up your current Firestore rules. Publish the **entire** included `firestore.rules` in Firebase Console > Firestore Database > Rules. **This is required** for the chat fix.
-2. Replace `index.html` and `firebase-config.js` in the root of your existing GitHub Pages repository, then commit. Keep your existing Firebase project config; the included config is copied from v1.4.
-3. Hard-refresh the site after GitHub Pages deploys. **No GitHub Pages settings, Firebase Auth authorized domains, or billing changes are expected.**
-4. Test using two separate accounts: direct chat, group chat, task chat, read counters, manager/member task visibility, deletion, and leave approval.
+## Deploy
+1. Back up your current GitHub files and Firestore rules.
+2. Upload **index.html**, **arcade.js**, and **firebase-config.js** together to the same GitHub Pages directory. Keep your existing Firebase config values if the packaged config has placeholders.
+3. In Firebase Console > Firestore Database > Rules, replace with **firestore.rules** and publish. This is **required** for multiplayer Pong.
+4. Wait for GitHub Pages deployment and hard-refresh both players' browsers. No GitHub Pages settings, Auth domains, Cloud Functions, or billing changes should be needed.
+5. Test with two separate authenticated accounts. Challenge, accept, then join the match. Practice mode also works without Firebase.
 
-## Security and known limitations
-- **Not validated against a live Firebase project or Firestore emulator.** Back up rules and test with non-sensitive accounts first.
-- Participant membership on task chats is fixed at creation. Changes to task collaborators do not yet revoke existing chat membership. **Do not use task chats for sensitive material until membership synchronization is implemented.**
-- Chat members may read old messages even if the task was soft-deleted; sending new task messages is blocked. Group membership management is not yet available.
-- Firestore read counters can still be affected by multiple concurrent devices; test before wider rollout.
-- No Cloud Functions, Storage, or paid services. Firebase Spark usage quotas still apply.
-- Manager role changes and automatic task-assignment notifications remain unfinished.
+## Limitations / safety
+- **WebRTC uses a public STUN server only**. Some office networks, mobile carriers, or NAT configurations need a TURN relay. No TURN service is bundled, and reliable connectivity on all networks is not guaranteed on Spark-only resources.
+- Firestore handles only matchmaking and WebRTC SDP/ICE signaling. Live paddle and ball state use peer-to-peer DataChannels. Firebase free quotas still apply to signaling.
+- Games are casual, not cheat-proof. The host simulates physics; final scores are not independently verified. No public leaderboard in this release.
+- Match records and ICE candidates are retained; an administrator should establish a retention/cleanup policy. Spark has no automatic Cloud Functions cleanup.
+- No Firebase emulator or real two-device connectivity test was performed here. Verify Firestore rules and gameplay with real accounts before general rollout.
+- Existing v1.5 caveats around task-chat membership and role management remain.
