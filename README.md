@@ -1,28 +1,24 @@
-# Team Task Tracker v1.3 Spark Edition
+# Team Task Tracker v1.4 Spark Edition
 
-This build uses **Firebase Authentication, Cloud Firestore and GitHub Pages only**. No Cloud Functions, Firebase Storage, or Blaze billing plan is required. Your existing Firebase project configuration is included in `firebase-config.js`.
+## Deployment
+1. In Firebase Console > Firestore Database > Rules, publish `firestore.rules`. Keep a backup of your old rules.
+2. Upload `index.html` and `firebase-config.js` to the ROOT of your existing GitHub Pages repository and commit.
+3. Hard refresh the live site. No GitHub Pages settings, Firebase authorized domain, or Authentication changes are needed.
+4. Use separate manager/member test accounts. Test task deletion, notification dismissal, direct/group/task chat, and leave approvals.
 
-## Deploy
-1. Firebase Console > Firestore Database > Rules: replace rules with `firestore.rules` and click Publish.
-2. GitHub repository: replace root `index.html` and `firebase-config.js` with these files; commit changes. Keep GitHub Pages pointed at `main` / root.
-3. Hard-refresh the hosted website. Sign in as manager, task owner and collaborator to test.
+## What's new
+- Deleted tasks filtered from all calendar views, lists, and dashboard statistics.
+- Read notifications hidden immediately and after refresh.
+- Text-only direct, group, and task chat; real-time listeners and latest 30 messages per conversation.
+- Leave planner: planned leave visible to team; other managers approve or decline; approved leave appears green on calendar. Managers cannot approve their own leave.
+- No Cloud Functions, Firebase Storage, or paid Firebase services.
 
-## How the free-tier workflow works
-- **Delete task** performs a *soft deletion*: the task document remains in Firestore with `deletedAt` and an activity event. It disappears from the calendar/task lists but remains readable by its participants to show the deletion alert. No files are uploaded.
-- **Request revision** changes the task status to In Progress and writes an activity event with manager notes. Owners and accepted collaborators see the alert.
-- **Read notifications**: the activity's `activityReadBy` array stores read state across devices. Only the most recent task activity event is retained. Older events are not an immutable audit log.
-- Existing `notifications` collection messages still work. Incoming invitations remain visible as before.
-
-## Important limitations
-- This is **not hard deletion**. Retaining a task is necessary to make its deletion event visible without a trusted backend. Storage grows over time; a separate administrator-led cleanup policy would be needed.
-- Task activity events are embedded in the task record. A later event can replace the previous one; this is not guaranteed delivery or an immutable audit trail.
-- The manager can still see all task records, including deleted ones, through Firestore; the UI hides them.
-- The security rules validate who can delete/request revision and constrain fields, but without a trusted server they cannot guarantee all possible business invariants or tamper-proof audit history.
-- Manager role changes, automatic new-assignment notifications, and some other advanced notifications are not implemented in this build.
-- Firebase Spark free quotas apply. Test on separate accounts before production use.
-
-## Configuration
-- **GitHub Pages:** No settings changes, only upload changed files.
-- **Firebase Authentication:** No settings changes.
-- **Firestore:** Publish the included new rules.
-- **Cloud Functions:** Not used; no deployment.
+## Limitations and security
+- Chat is a first implementation, not a production-hardened messaging service. Group membership cannot be changed after creation. Task-chat membership changes may require additional synchronization.
+- Leave requests do not collect medical reasons or other sensitive notes. All authenticated users can see leave dates.
+- Chat unread counts are approximate counters; they may become inaccurate with multiple concurrent devices.
+- Soft-deleted task records remain in Firestore to support notifications. Task activity history retains only the most recent event.
+- Existing manager role promotion/demotion and automatic task assignment alerts remain unfinished.
+- Firestore rules are included but **have not been tested against the live project or Emulator Suite**. Test with non-sensitive accounts before production.
+- Firebase Spark quotas apply (reads, writes and storage). A large team or active chat can exhaust free quotas.
+- Firebase configuration values are public browser app settings, not Admin SDK credentials.

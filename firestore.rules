@@ -99,5 +99,53 @@ service cloud.firestore {
      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
      && request.resource.data.read is bool;
   }
+  function chatMember(cid) { return logged() && request.auth.uid in get(/databases/$(database)/documents/chats/$(cid)).data.participants; }
+  function chatTaskAllowed(c) { return c.type != 'task' || (exists(taskPath(c.taskId)) && (manager() || participant(get(taskPath(c.taskId)).data))); }
+  match /chats/{cid} {
+    allow get, list: if logged() && request.auth.uid in resource.data.participants && chatTaskAllowed(resource.data);
+    allow create: if logged() && request.resource.data.createdBy == request.auth.uid
+      && request.resource.data.participants is list && request.auth.uid in request.resource.data.participants
+      && request.resource.data.participants.size() >= 2 && request.resource.data.participants.size() <= 20
+      && request.resource.data.messageCount == 0
+      && request.resource.data.type in ['direct','group','task']
+      && (request.resource.data.type != 'task' || (exists(taskPath(request.resource.data.taskId)) && participant(get(taskPath(request.resource.data.taskId)).data)
+          && request.resource.data.participants.hasAll([get(taskPath(request.resource.data.taskId)).data.ownerId])
+          && request.resource.data.participants.hasAll(get(taskPath(request.resource.data.taskId)).data.collaborators)
+          && request.resource.data.participants.size() == get(taskPath(request.resource.data.taskId)).data.collaborators.size()+1));
+    allow update: if logged() && request.auth.uid in resource.data.participants && chatTaskAllowed(resource.data)
+      && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readCounts'])
+        && request.resource.data.readCounts.diff(resource.data.readCounts).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.readCounts[request.auth.uid] == resource.data.messageCount
+       || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['messageCount','updatedAt','readCounts'])
+        && request.resource.data.messageCount == resource.data.messageCount + 1
+        && request.resource.data.readCounts.diff(resource.data.readCounts).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.readCounts[request.auth.uid] == resource.data.get('readCounts', {}).get(request.auth.uid, 0)+1);
+    allow delete: if false;
+    match /messages/{mid} {
+      allow get, list: if chatMember(cid) && chatTaskAllowed(get(/databases/$(database)/documents/chats/$(cid)).data);
+      allow create: if chatMember(cid) && chatTaskAllowed(get(/databases/$(database)/documents/chats/$(cid)).data)
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.text is string && request.resource.data.text.size()>0 && request.resource.data.text.size()<=1500
+        && request.resource.data.keys().hasOnly(['senderId','text','createdAt'])
+        && getAfter(/databases/$(database)/documents/chats/$(cid)).data.messageCount == get(/databases/$(database)/documents/chats/$(cid)).data.messageCount+1;
+      allow update, delete: if false;
+    }
+  }
+  match /leaves/{lid} {
+    allow read: if logged();
+    allow create: if logged() && request.resource.data.userId == request.auth.uid
+      && request.resource.data.status == 'pending' && request.resource.data.start is string
+      && request.resource.data.end is string && request.resource.data.end >= request.resource.data.start
+      && request.resource.data.note is string && request.resource.data.note.size() <= 300;
+    allow update: if logged() && (
+      (resource.data.userId == request.auth.uid && resource.data.status in ['pending','approved']
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status == 'cancelled')
+      || (manager() && resource.data.userId != request.auth.uid && resource.data.status == 'pending'
+       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','reviewedBy','reviewedAt'])
+       && request.resource.data.reviewedBy == request.auth.uid && request.resource.data.status in ['approved','declined'])
+    );
+    allow delete: if false;
+  }
+
  }
 }
