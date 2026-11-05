@@ -1,5 +1,4 @@
-// Replace with the Firebase web app configuration from Firebase Console > Project settings.
-// Firebase web configuration is public; NEVER put Admin SDK private keys here.
+// Firebase public web configuration (not a service-account secret).
 export const firebaseConfig = {
   apiKey: "AIzaSyCNQCNfs80pevnXRQxTmFTg0lx0r3JMNPU",
   authDomain: "team-task-tracker-4b75d.firebaseapp.com",

@@ -1,32 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
-    function manager() { return signedIn() && userDoc().data.role == 'manager'; }
-    function memberOfTask(t) { return signedIn() && (manager() || t.ownerId == request.auth.uid || t.createdBy == request.auth.uid || request.auth.uid in t.collaborators); }
-    match /users/{uid} {
-      allow read: if signedIn();
-      // Provisioning and role changes must happen via a trusted Admin SDK backend.
-      allow write: if false;
-    }
-    match /tasks/{taskId} {
-      allow read: if signedIn() && memberOfTask(resource.data);
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid && (manager() || request.resource.data.ownerId == request.auth.uid) && request.resource.data.collaborators == [] && request.resource.data.status == 'Pending';
-      // Baseline restricts task edits to managers; member edits need field-level rules / trusted backend.
-      allow update: if manager();
-      allow delete: if false;
-    }
-    match /requests/{requestId} {
-      allow read: if signedIn() && (manager() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.fromId == request.auth.uid && request.resource.data.status == 'pending';
-      allow update, delete: if false; // Implement secure accept/decline in a trusted backend.
-    }
-    match /notifications/{notificationId} {
-      allow read: if signedIn() && (manager() || resource.data.toId == request.auth.uid);
-      allow create: if false; // Trusted backend only; avoid spoofed notifications.
-      allow update: if signedIn() && resource.data.toId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow delete: if false;
-    }
+ match /databases/{database}/documents {
+  function logged() { return request.auth != null; }
+  function manager() { return logged() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager'; }
+  function participant(t) { return logged() && (t.ownerId == request.auth.uid || t.createdBy == request.auth.uid || request.auth.uid in t.collaborators); }
+  match /users/{uid} { allow read: if logged(); allow write: if false; }
+  match /tasks/{id} {
+   allow read: if manager() || participant(resource.data);
+   allow create: if logged() && request.resource.data.createdBy == request.auth.uid && (manager() || request.resource.data.ownerId == request.auth.uid) && request.resource.data.collaborators == [] && request.resource.data.status == 'Pending';
+   allow update: if manager() || (participant(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status in ['Pending','In Progress','On Hold','For Approval']);
+   allow delete: if false;
   }
+  match /requests/{id} {
+   allow get: if logged() && (manager() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
+   allow list: if logged() && (manager() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
+   allow create: if logged() && request.resource.data.fromId == request.auth.uid && request.resource.data.status == 'pending' && request.resource.data.toId != request.auth.uid && exists(/databases/$(database)/documents/tasks/$(request.resource.data.taskId));
+   allow update: if logged() && resource.data.toId == request.auth.uid && resource.data.status == 'pending' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status in ['accepted','declined'];
+   allow delete: if false;
+  }
+  match /notifications/{id} {
+   allow read: if logged() && resource.data.toId == request.auth.uid;
+   allow create, delete: if false;
+   allow update: if logged() && resource.data.toId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+  }
+ }
 }
