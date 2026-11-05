@@ -1,22 +1,28 @@
-# Team Task Tracker v1.2
+# Team Task Tracker v1.3 Spark Edition
 
-## Deployment
-1. Replace `index.html`, `firebase-config.js`, and other project files in your existing GitHub Pages repository root. No GitHub Pages reconfiguration is needed.
-2. In Firebase Console > Firestore Database > Rules, replace existing rules with the bundled `firestore.rules` and click **Publish**. This is **required** for v1.2 collaboration acceptance.
-3. Keep the same Firebase project, Authentication users, and authorized domain. No new Firebase collections or domain configuration required.
-4. Test with two different Firebase accounts. Send an invitation, accept it, confirm the task appears for recipient, then send a separate invitation and decline it.
+This build uses **Firebase Authentication, Cloud Firestore and GitHub Pages only**. No Cloud Functions, Firebase Storage, or Blaze billing plan is required. Your existing Firebase project configuration is included in `firebase-config.js`.
 
-## Changes
-- Collaboration acceptance is a single atomic Firestore transaction. Security rules validate a pending invitation and restrict collaborator changes to exactly the accepting recipient.
-- Decline only updates invitation status.
-- Status edits write only the status field.
-- Notification read changes write only the read field.
-- Improved invitation error reporting.
+## Deploy
+1. Firebase Console > Firestore Database > Rules: replace rules with `firestore.rules` and click Publish.
+2. GitHub repository: replace root `index.html` and `firebase-config.js` with these files; commit changes. Keep GitHub Pages pointed at `main` / root.
+3. Hard-refresh the hosted website. Sign in as manager, task owner and collaborator to test.
 
-## Known limitations
-- This is still a testing build, not production ready.
-- No backend-generated assignment/approval/response notifications; incoming invitations appear as notification-center items.
-- Role promotions/demotions still need trusted server-side implementation.
-- The recipient may see 'Task unavailable' before accepting because task reads are restricted.
-- Existing managers' non-status task editing is not yet implemented.
-- The Firebase rules use `getAfter()` to enforce cross-document consistency; validate in Firebase Rules Playground/emulator before team rollout.
+## How the free-tier workflow works
+- **Delete task** performs a *soft deletion*: the task document remains in Firestore with `deletedAt` and an activity event. It disappears from the calendar/task lists but remains readable by its participants to show the deletion alert. No files are uploaded.
+- **Request revision** changes the task status to In Progress and writes an activity event with manager notes. Owners and accepted collaborators see the alert.
+- **Read notifications**: the activity's `activityReadBy` array stores read state across devices. Only the most recent task activity event is retained. Older events are not an immutable audit log.
+- Existing `notifications` collection messages still work. Incoming invitations remain visible as before.
+
+## Important limitations
+- This is **not hard deletion**. Retaining a task is necessary to make its deletion event visible without a trusted backend. Storage grows over time; a separate administrator-led cleanup policy would be needed.
+- Task activity events are embedded in the task record. A later event can replace the previous one; this is not guaranteed delivery or an immutable audit trail.
+- The manager can still see all task records, including deleted ones, through Firestore; the UI hides them.
+- The security rules validate who can delete/request revision and constrain fields, but without a trusted server they cannot guarantee all possible business invariants or tamper-proof audit history.
+- Manager role changes, automatic new-assignment notifications, and some other advanced notifications are not implemented in this build.
+- Firebase Spark free quotas apply. Test on separate accounts before production use.
+
+## Configuration
+- **GitHub Pages:** No settings changes, only upload changed files.
+- **Firebase Authentication:** No settings changes.
+- **Firestore:** Publish the included new rules.
+- **Cloud Functions:** Not used; no deployment.

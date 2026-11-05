@@ -29,15 +29,48 @@ service cloud.firestore {
    allow read: if logged();
    allow write: if false;
   }
+  function activityDelete() {
+    return logged() && (manager() || resource.data.ownerId == request.auth.uid)
+      && resource.data.get('deletedAt', null) == null
+      && request.resource.data.deletedAt is timestamp
+      && request.resource.data.activityEvent.type == 'deleted'
+      && request.resource.data.activityEvent.by == request.auth.uid
+      && request.resource.data.activityEvent.id is string
+      && request.resource.data.activityEvent.text is string
+      && request.resource.data.activityEvent.text.size() <= 1000
+      && request.resource.data.activityReadBy == [request.auth.uid]
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedAt','activityEvent','activityReadBy']);
+  }
+  function activityRevision() {
+    return logged() && manager() && resource.data.get('deletedAt', null) == null
+      && resource.data.status == 'For Approval'
+      && request.resource.data.status == 'In Progress'
+      && request.resource.data.activityEvent.type == 'revision'
+      && request.resource.data.activityEvent.by == request.auth.uid
+      && request.resource.data.activityEvent.id is string
+      && request.resource.data.activityEvent.text is string
+      && request.resource.data.activityEvent.text.size() <= 2500
+      && request.resource.data.activityReadBy == [request.auth.uid]
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','activityEvent','activityReadBy']);
+  }
+  function activityRead() {
+    return logged() && resource.data.get('activityEvent', null) != null
+      && (manager() || participant(resource.data))
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activityReadBy'])
+      && request.resource.data.activityReadBy is list
+      && request.resource.data.activityReadBy.size() == resource.data.get('activityReadBy', []).size() + 1
+      && request.resource.data.activityReadBy.hasAll(resource.data.get('activityReadBy', []))
+      && request.auth.uid in request.resource.data.activityReadBy;
+  }
   match /tasks/{id} {
    allow read: if manager() || participant(resource.data);
    allow create: if logged() && request.resource.data.createdBy == request.auth.uid
      && (manager() || request.resource.data.ownerId == request.auth.uid)
      && request.resource.data.collaborators == [] && request.resource.data.status == 'Pending';
-   allow update: if (manager() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+   allow update: if resource.data.get('deletedAt', null) == null && ((manager() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
      || (participant(resource.data) && statusOnly())
-     || acceptedCollaboratorChange(id);
-   allow delete: if false;
+     || acceptedCollaboratorChange(id) || activityDelete() || activityRevision()) || activityRead();
+   allow delete: if false; // Soft delete retains record for participant alerts
   }
   match /requests/{id} {
    allow get, list: if logged() && (manager() || resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid);
@@ -45,7 +78,7 @@ service cloud.firestore {
      && request.resource.data.status == 'pending' && request.resource.data.toId != request.auth.uid
      && exists(taskPath(request.resource.data.taskId))
      && (manager() || participant(get(taskPath(request.resource.data.taskId)).data));
-   allow update: if logged() && resource.data.toId == request.auth.uid
+   allow update: if (logged() && resource.data.status in ['accepted','declined'] && (resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clearedBy']) && !(request.auth.uid in resource.data.get('clearedBy', [])) && request.resource.data.clearedBy.size() == resource.data.get('clearedBy', []).size() + 1 && request.resource.data.clearedBy.hasAll(resource.data.get('clearedBy', [])) && request.auth.uid in request.resource.data.clearedBy) || (logged() && resource.data.toId == request.auth.uid
      && resource.data.status == 'pending'
      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
      && (
@@ -55,9 +88,10 @@ service cloud.firestore {
            && !(request.auth.uid in get(taskPath(resource.data.taskId)).data.collaborators)
            && request.auth.uid in getAfter(taskPath(resource.data.taskId)).data.collaborators
            && getAfter(taskPath(resource.data.taskId)).data.lastCollabRequestId == id)
-     );
+     ));
    allow delete: if false;
   }
+  match /taskAudit/{id} { allow read: if manager(); allow write: if false; }
   match /notifications/{id} {
    allow read: if logged() && resource.data.toId == request.auth.uid;
    allow create, delete: if false;
